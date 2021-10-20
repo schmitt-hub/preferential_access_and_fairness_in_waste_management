@@ -120,8 +120,7 @@ def greedy(users_and_facs_df, travel_dict, users, facs, lb=0.0, budget_factor=1.
         ditched_facs = list(sorted_facs.keys())[:turnover]
         ditched_zipcodes = [area for (area, fac) in assignment_results['assignment'].items() if fac in ditched_facs]
         open_facs = list(sorted_facs.keys())[turnover:]
-        access = {j: sum(exp_travelers_dict[i][j] for i in ditched_zipcodes)
-                     for j in facs if j not in open_facs}
+        access = {j: sum(exp_travelers_dict[i][j] for i in ditched_zipcodes) for j in facs if j not in open_facs}
         sorted_access = dict(sorted(access.items(), key=lambda item: -item[1]))
         open_facs += list(sorted_access.keys())[:turnover]
         open_facs = pd.Index(open_facs)
@@ -136,7 +135,5 @@ def greedy(users_and_facs_df, travel_dict, users, facs, lb=0.0, budget_factor=1.
                    {"assignment": best_assignment, "open_facs": best_open_facs, "objective_value": best_obj,
                     "gap": best_gap, "solving_time": solving_time},
                "model_details":
-                   {"cap_factor": cap_factor, "budget_factor": budget_factor}}
+                   {"users": users, "facs": facs, "cap_factor": cap_factor, "budget_factor": budget_factor}}
     return is_feasible, results
-
-
