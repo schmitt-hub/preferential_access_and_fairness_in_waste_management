@@ -3,6 +3,8 @@ import pandas as pd
 from geopy import distance
 import random as rn
 import json
+import bz2
+import _pickle as cPickle
 
 
 # functions for computing travel probabilities
@@ -19,26 +21,6 @@ def f_rural(d):
         return exp(-0.24990116894290326 * d ** 0.8201058149904008)
     else:
         return 1.6114912595353221 * exp(-0.6887217475464711 * d ** 0.43652329253292316)
-
-
-# functions for loading data files
-
-def load_users_and_facs(users_and_facs_filename):
-    users_and_facs_df = pd.read_excel(users_and_facs_filename)
-    return users_and_facs_df
-
-
-def load_travel_dict(travel_dict_filename):
-    with open(travel_dict_filename, 'rb') as infile:
-        travel_dict = json.load(infile)
-    travel_dict = {int(i): {int(j): travel_dict[i][j] for j in travel_dict[i]} for i in travel_dict}
-    return travel_dict
-
-
-def load_input_data(users_and_facs_filename, travel_dict_filename):
-    users_and_facs_df = load_users_and_facs(users_and_facs_filename)
-    travel_dict = load_travel_dict(travel_dict_filename)
-    return users_and_facs_df, travel_dict
 
 
 def create_travel_dict(users_and_facs_df, users, facs):
@@ -65,6 +47,31 @@ def create_travel_dict(users_and_facs_df, users, facs):
                 travel_dict[i][j] = f_rural(dist)
     with open('travel_dict.json', 'w') as outfile:
         json.dump(travel_dict, outfile)
+
+
+def save_travel_dict(travel_dict, travel_dict_filename):
+    with bz2.BZ2File(travel_dict_filename, "w") as f:
+        cPickle.dump(travel_dict, f)
+
+
+# functions for loading data files
+
+def load_users_and_facs(users_and_facs_filename):
+    users_and_facs_df = pd.read_excel(users_and_facs_filename)
+    return users_and_facs_df
+
+
+def load_travel_dict(travel_dict_filename):
+    data = bz2.BZ2File(travel_dict_filename, 'rb')
+    travel_dict = cPickle.load(data)
+    travel_dict = {int(i): {int(j): travel_dict[i][j] for j in travel_dict[i]} for i in travel_dict}
+    return travel_dict
+
+
+def load_input_data(users_and_facs_filename, travel_dict_filename):
+    users_and_facs_df = load_users_and_facs(users_and_facs_filename)
+    travel_dict = load_travel_dict(travel_dict_filename)
+    return users_and_facs_df, travel_dict
 
 
 def geodesic_distance(users_and_facs_df, i, j):
@@ -139,97 +146,113 @@ def get_lower_bound(users_and_facs_df, travel_dict, users, facs, budget_factor, 
 
 # functions for computing key figures from results
 
-def get_distances_to_assigned(results, users_and_facs_df, region='all'):
+def get_region_list(user_region='all', facility_region='all'):
+    if user_region == 'all':
+        user_region_list = ['rural', 'urban']
+    else:
+        user_region_list = [user_region]
+    if facility_region == 'all':
+        facility_region_list = ['rural', 'urban']
+    else:
+        facility_region_list = [facility_region]
+    return user_region_list, facility_region_list
+
+
+def get_distances_to_assigned(results, users_and_facs_df, user_region='all', facility_region='all'):
     """
-    compute the distance to the assigned facility for each user
+    compute the distance from users to the respective assigned facility
     :param results: dictionary of the results
     :param users_and_facs_df: dataframe of the user and facility related input data
-    :param region: string indicating the considered region of origin for the users: "urban", "rural" or "all"
-    :return: a dictionary with the the distance to the assigned facility for each user
+    :param user_region: string indicating the considered region of origin for the users:
+           "urban", "rural" or "all"
+    :param facility_region: string indicating the considered region of location for the facilities:
+           "urban", "rural" or "all"
+    :return: a dictionary with the the distance from users to the respective assigned facility
     """
     assignment = results['solution_details']['assignment']
-    if region == 'rural':
-        distance_dict = {i: geodesic_distance(users_and_facs_df, i, j) for (i, j) in assignment.items() if
-                         users_and_facs_df.at[int(i), 'regional spatial type'] == 'rural'}
-    elif region == 'urban':
-        distance_dict = {i: geodesic_distance(users_and_facs_df, i, j) for (i, j) in assignment.items() if
-                         users_and_facs_df.at[int(i), 'regional spatial type'] == 'urban'}
-    else:
-        distance_dict = {i: geodesic_distance(users_and_facs_df, i, j) for (i, j) in assignment.items()}
+    user_region_list, facility_region_list = get_region_list(user_region, facility_region)
+    distance_dict = {i: geodesic_distance(users_and_facs_df, i, j) for (i, j) in assignment.items() if
+                     users_and_facs_df.at[i, 'regional spatial type'] in user_region_list and
+                     users_and_facs_df.at[j, 'regional spatial type'] in facility_region_list}
     return distance_dict
 
 
-def get_utilization(results, users_and_facs_df, travel_dict, region='all'):
+def get_access(results, users_and_facs_df, travel_dict, user_region='all', facility_region='all'):
     """
-    compute the utilization for each facility
+    compute the absolute access of facilities to users
     :param results: dictionary of the results
     :param users_and_facs_df: dataframe of the user and facility related input data
     :param travel_dict: dictionary of the travel probabilities from each user to each facility
-    :param region: string indicating the considered region of location for the facilities: "urban", "rural" or "all"
-    :return: a dictionary with the utilization for each facility
+    :param user_region: string indicating the considered region of origin for the users:
+           "urban", "rural" or "all"
+    :param facility_region: string indicating the considered region of location for the facilities:
+           "urban", "rural" or "all"
+    :return: a dictionary with the absolute access of facilities to users
     """
     assignment = results['solution_details']['assignment']
     open_facs = results['solution_details']['open_facs']
-    cap_factor = results['model_details']['cap_factor']
-    if region == 'rural':
-        utilization = {j: sum(users_and_facs_df.at[i, 'population'] * travel_dict[i][j]
-                              for i in assignment if assignment[i] == j) /
-                          (cap_factor * users_and_facs_df.at[j, 'capacity'])
-                       for j in open_facs if users_and_facs_df.at[j, 'regional spatial type'] == 'rural'}
-    elif region == 'urban':
-        utilization = {j: sum(users_and_facs_df.at[i, 'population'] * travel_dict[i][j]
-                              for i in assignment if assignment[i] == j) /
-                          (cap_factor * users_and_facs_df.at[j, 'capacity'])
-                       for j in open_facs if users_and_facs_df.at[j, 'regional spatial type'] == 'urban'}
-    else:
-        utilization = {j: sum(users_and_facs_df.at[i, 'population'] * travel_dict[i][j]
-                              for i in assignment if assignment[i] == j) /
-                          (cap_factor * users_and_facs_df.at[j, 'capacity'])
-                       for j in open_facs}
-    return utilization
+    user_region_list, facility_region_list = get_region_list(user_region, facility_region)
+    access = {j: sum(users_and_facs_df.at[i, 'population'] * travel_dict[i][j] for i in assignment.keys()
+                     if assignment[i] == j and users_and_facs_df.at[i, 'regional spatial type'] in user_region_list)
+              for j in open_facs if users_and_facs_df.at[j, 'regional spatial type'] in facility_region_list}
+    return access
 
 
-def get_overall_access(results, users_and_facs_df, travel_dict, region='all'):
+def get_overall_access(results, users_and_facs_df, travel_dict, user_region='all', facility_region='all'):
     """
     compute the overall access
     :param results: dictionary of the results
     :param users_and_facs_df: dataframe of the user and facility related input data
     :param travel_dict: dictionary of the travel probabilities from each user to each facility
-    :param region: string indicating the considered region of origin for the users: "urban", "rural" or "all"
+    :param user_region: string indicating the considered region of origin for the users:
+           "urban", "rural" or "all"
+    :param facility_region: string indicating the considered region of location for the facilities:
+           "urban", "rural" or "all"
     :return: a scalar specifying the fraction of users that has access
     """
     assignment = results['solution_details']['assignment']
-    if region == 'rural':
-        overall_access = sum(
-            users_and_facs_df.at[int(i), 'population'] * travel_dict[i][j] for (i, j) in assignment.items()
-            if users_and_facs_df.at[int(i), 'regional spatial type'] == 'rural') / \
-                         sum(users_and_facs_df.at[int(i), 'population'] for i in assignment.keys() if
-                             users_and_facs_df.at[int(i), 'regional spatial type'] == 'rural')
-    elif region == 'urban':
-        overall_access = sum(
-            users_and_facs_df.at[int(i), 'population'] * travel_dict[i][j] for (i, j) in assignment.items()
-            if users_and_facs_df.at[int(i), 'regional spatial type'] == 'urban') / \
-                         sum(users_and_facs_df.at[int(i), 'population'] for i in assignment.keys() if
-                             users_and_facs_df.at[int(i), 'regional spatial type'] == 'urban')
-    else:
-        overall_access = sum(users_and_facs_df.at[int(i), 'population'] * travel_dict[i][j]
-                             for (i, j) in assignment.items()) / \
-                         sum(users_and_facs_df.at[i, 'population'] for i in assignment.keys())
+    user_region_list, _ = get_region_list(user_region, facility_region)
+    access = get_access(results, users_and_facs_df, travel_dict, user_region, facility_region)
+    overall_access = sum(access.values()) / sum(users_and_facs_df.at[int(i), 'population']
+                                                for i in assignment.keys() if
+                                                users_and_facs_df.at[i, 'regional spatial type'] in user_region_list)
     return overall_access
 
 
-def get_weighted_utilization_figures(results, users_and_facs_df, travel_dict, region='all'):
+def get_utilization(results, users_and_facs_df, travel_dict, user_region='all', facility_region='all'):
+    """
+    compute the utilization of open facilities
+    :param results: dictionary of the results
+    :param users_and_facs_df: dataframe of the user and facility related input data
+    :param travel_dict: dictionary of the travel probabilities from each user to each facility
+    :param user_region: string indicating the considered region of origin for the users:
+           "urban", "rural" or "all"
+    :param facility_region: string indicating the considered region of location for the facilities:
+           "urban", "rural" or "all"
+    :return: a dictionary with the utilization of open facilities
+    """
+    open_facs = results['solution_details']['open_facs']
+    cap_factor = results['model_details']['cap_factor']
+    _, facility_region_list = get_region_list(user_region, facility_region)
+    access = get_access(results, users_and_facs_df, travel_dict, user_region, facility_region)
+    utilization = {j: access[j] / (users_and_facs_df.at[j, 'capacity'] * cap_factor)
+                   for j in open_facs if users_and_facs_df.at[j, 'regional spatial type'] in facility_region_list}
+    return utilization
+
+
+def get_weighted_utilization_figures(results, users_and_facs_df, travel_dict, facility_region='all'):
     """
     compute the weighted mean, weighted variance and the weighted Coefficient of Variation for the utilization of
     open facilites
     :param results: dictionary of the results
     :param users_and_facs_df: dataframe of the user and facility related input data
     :param travel_dict: dictionary of the travel probabilities from each user to each facility
-    :param region: string indicating the considered region: "urban", "rural" or "all"
+    :param facility_region: string indicating the considered region of location for the facilities:
+           "urban", "rural" or "all"
     :return: 3 scalars, the weighted mean, weighted variance and the weighted Coefficient of Variation
     for the utilization of open facilites
     """
-    utilization = get_utilization(results, users_and_facs_df, travel_dict, region)
+    utilization = get_utilization(results, users_and_facs_df, travel_dict, facility_region=facility_region)
     weighted_utilization_mean = sum(users_and_facs_df.at[j, 'capacity'] * utilization[j] for j in utilization) / \
                                 sum(users_and_facs_df.at[j, 'capacity'] for j in utilization)
     weighted_utilization_var = sum(users_and_facs_df.at[j, 'capacity'] *
@@ -272,10 +295,7 @@ def get_dof(results, users_and_facs_df, travel_dict):
     nr_of_facility_tuples = len(open_facs) * (len(open_facs) - 1)
     dof = (nr_of_warranted_fairness_pairs + nr_of_compensatory_fairness_pairs) / nr_of_facility_tuples
     if nr_of_facility_tuples == nr_of_warranted_fairness_pairs:
-        # the dof_prime is not defined
+        # in that case the dof_prime is not defined
         return dof, "undefined"
     dof_prime = nr_of_compensatory_fairness_pairs / (nr_of_facility_tuples - nr_of_warranted_fairness_pairs)
     return dof, dof_prime
-
-
-
