@@ -141,8 +141,9 @@ def optimize_model(m, threads=1, tolerance=5e-3, time_limit=20000, print_sol=Fal
                     "gap": opt.options["MIPGap"], "solving_time": res.Solver[0]['Time'],
                     "areas_needing_postprocessing": []},
                "model_details":
-                   {"cap_factor": m.cap_factor.value, "budget_factor": m.budget.value / len(list(m.facs)),
-                    "cutoff": m.cutoff.value, "strict_assign_to_one": m.strict_assign_to_one.value}}
+                   {"users": list(m.users), "facs": list(m.facs), "cap_factor": m.cap_factor.value,
+                    "budget_factor": round(m.budget.value / len(list(m.facs)), 2), "cutoff": m.cutoff.value,
+                    "strict_assign_to_one": m.strict_assign_to_one.value}}
 
     unassigned_ctr = 0
     for j in m.facs:
