@@ -1,1 +1,2 @@
 # preferential_access_and_fairness_in_waste_management
+This project is based on the paper **Balancing preferential access and fairness with an application to waste management: mathematical models, optimality conditions, and heuristics** by C. Schmitt and B. Singh. There, we propose a Mixed Integer Quadratic Programming Model for a Facility Location Problem that seeks to assign users to facilities in a manner that balances access for users and fairness among facilities. We present a case study of this problem for the allocation of recycling centers in Bavaria
