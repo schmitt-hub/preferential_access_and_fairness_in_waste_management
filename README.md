@@ -3,7 +3,7 @@ This project is based on the theory and application of quadratic optimization mo
 
 For the theoretical side, see the preprint **Quadratic Optimization Models for Balancing Preferential Access and Fairness: Formulations and Optimality Conditions** by C. Schmitt and B. Singh. Here, we propose a Mixed Integer Quadratic Programming (MIQP) Model for a Facility Location Problem that seeks to assign users to facilities in a manner that balances access for users and fairness among facilities. We refer to the paper for further information on methods and assumptions. A preprint of the manuscript that is currently under peer review is available at http://www.optimization-online.org/DB_HTML/2021/11/8669.html. 
 
-The motivation for this project is the allocation of recycling centers in Bavaria. We refer to the paper **Selectively closing recycling centers in Bavaria: Reforming policy and reducing disparities" for details.
+The motivation for this project is the allocation of recycling centers in Bavaria. We refer to the preprint **Selectively closing recycling centers in Bavaria: Reforming policy and reducing disparities** by M. Schmidt and B.Singh for details.
 
 ## Repository content
 The repository contains the following content:
